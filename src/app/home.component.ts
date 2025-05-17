@@ -6,6 +6,7 @@ import { FormsModule } from '@angular/forms';
 import { HttpClientModule } from '@angular/common/http';
 import { RxjsExampleService, User, Post } from './rxjs-example.service';
 import { SearchComponent } from './search.component';
+import { webSocket, WebSocketSubject } from 'rxjs/webSocket';
 
 @Component({
   selector: 'app-home',
@@ -42,6 +43,41 @@ import { SearchComponent } from './search.component';
           <p>Current Count: {{ counter$ | async }}</p>
           <button (click)="decrementCounter()">-</button>
           <button (click)="incrementCounter()">+</button>
+        </div>
+      </section>
+      
+      <section>
+        <h2>WebSocket Echo Example</h2>
+        <div class="websocket-container">
+          <div class="connection-status" [class.connected]="wsConnected">
+            Status: {{ wsConnected ? 'Connected' : 'Disconnected' }}
+          </div>
+          
+          <div class="button-group">
+            <button (click)="connectWebSocket()" [disabled]="wsConnected">Connect</button>
+            <button (click)="disconnectWebSocket()" [disabled]="!wsConnected">Disconnect</button>
+          </div>
+          
+          <div class="message-form" *ngIf="wsConnected">
+            <h4>Send a message:</h4>
+            <div class="input-group">
+              <input type="text" [(ngModel)]="messageText" placeholder="Type a message to echo..." 
+                (keyup.enter)="sendMessage()">
+              <button (click)="sendMessage()" [disabled]="!messageText">Send</button>
+            </div>
+          </div>
+          
+          <div class="messages">
+            <h4>Messages: <span *ngIf="messages.length > 0">({{ messages.length }})</span></h4>
+            <div class="message-list">
+              <div *ngIf="messages.length === 0" class="no-messages">No messages yet</div>
+              <div *ngFor="let msg of messages" class="message" [class.sent]="msg.direction === 'Sent'" [class.received]="msg.direction === 'Received'">
+                <span class="direction">{{ msg.direction }}:</span> {{ msg.text }}
+                <span class="timestamp">{{ msg.timestamp | date:'medium' }}</span>
+              </div>
+            </div>
+            <button *ngIf="messages.length > 0" (click)="messages = []" class="clear-btn">Clear Messages</button>
+          </div>
         </div>
       </section>
       
@@ -184,6 +220,12 @@ export class HomeComponent implements OnInit, OnDestroy {
   // Expose notifications$ from service
   notifications$: Observable<string[]>;
   
+  // WebSocket properties
+  private socket$: WebSocketSubject<any> | null = null;
+  wsConnected = false;
+  messageText = '';
+  messages: Array<{ direction: string; text: string; timestamp: Date }> = [];
+  
   constructor(private rxjsService: RxjsExampleService) {
     // Initialize observables
     this.numbers$ = of(1, 2, 3, 4, 5);
@@ -236,6 +278,94 @@ export class HomeComponent implements OnInit, OnDestroy {
     this.counterSubject.next(this.counterSubject.value - 1);
   }
   
+  // WebSocket methods
+  connectWebSocket(): void {
+    if (this.socket$ && !this.socket$.closed) {
+      return;
+    }
+    
+    try {
+      console.log('Creating WebSocket connection to wss://ws.postman-echo.com/raw');
+      
+      this.socket$ = webSocket({
+        url: 'wss://ws.postman-echo.com/raw',
+        openObserver: {
+          next: () => {
+            console.log('WebSocket connection opened');
+            this.wsConnected = true;
+            
+            // Send an initial "hello" message when connection is established
+            setTimeout(() => {
+              this.sendMessage('Hello WebSocket!');
+            }, 500);
+          }
+        },
+        closeObserver: {
+          next: () => {
+            console.log('WebSocket connection closed');
+            this.wsConnected = false;
+          }
+        }
+      });
+      
+      this.socket$.pipe(
+        takeUntil(this.destroy$),
+        catchError(error => {
+          console.error('WebSocket error:', error);
+          this.wsConnected = false;
+          return of(null);
+        })
+      ).subscribe({
+        next: message => {
+          if (message) {
+            console.log('Received message:', message);
+            this.messages.push({
+              direction: 'Received',
+              text: typeof message === 'string' ? message : JSON.stringify(message),
+              timestamp: new Date()
+            });
+          }
+        },
+        error: err => {
+          console.error('WebSocket error:', err);
+          this.wsConnected = false;
+        },
+        complete: () => {
+          console.log('WebSocket connection closed');
+          this.wsConnected = false;
+        }
+      });
+    } catch (err) {
+      console.error('Error creating WebSocket:', err);
+      this.wsConnected = false;
+    }
+  }
+  
+  disconnectWebSocket(): void {
+    if (this.socket$) {
+      this.socket$.complete();
+      this.socket$ = null;
+      this.wsConnected = false;
+    }
+  }
+  
+  sendMessage(text?: string): void {
+    if (this.socket$ && !this.socket$.closed) {
+      const messageToSend = text || this.messageText;
+      
+      if (messageToSend) {
+        this.messages.push({
+          direction: 'Sent',
+          text: messageToSend,
+          timestamp: new Date()
+        });
+        
+        this.socket$.next(messageToSend);
+        this.messageText = '';
+      }
+    }
+  }
+  
   // Search method using reusable component
   onUserSearch(term: string): void {
     this.userSearchTerms$.next(term);
@@ -261,5 +391,10 @@ export class HomeComponent implements OnInit, OnDestroy {
     // Clean up subscriptions
     this.destroy$.next();
     this.destroy$.complete();
+    
+    // Close WebSocket connection if active
+    if (this.socket$) {
+      this.socket$.complete();
+    }
   }
 } 
