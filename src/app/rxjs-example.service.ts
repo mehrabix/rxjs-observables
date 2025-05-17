@@ -79,6 +79,8 @@ export class RxjsExampleService {
     const params = new HttpParams().set('q', term);
     
     return this.http.get<User[]>(`${this.API_BASE_URL}/users`, { params }).pipe(
+      // Note: debounceTime should be used at the UI level, not in the service
+      // This ensures we don't make unnecessary API calls while user is typing
       tap(users => this.addNotification(`Found ${users.length} users matching "${term}"`)),
       tap(() => this.loadingSubject.next(false)),
       catchError(error => {
@@ -102,6 +104,8 @@ export class RxjsExampleService {
     const params = new HttpParams().set('q', term);
     
     return this.http.get<Post[]>(`${this.API_BASE_URL}/posts`, { params }).pipe(
+      // Note: debounceTime should be used at the UI level, not in the service
+      // This ensures we don't make unnecessary API calls while user is typing
       tap(posts => this.addNotification(`Found ${posts.length} posts matching "${term}"`)),
       tap(() => this.loadingSubject.next(false)),
       catchError(error => {

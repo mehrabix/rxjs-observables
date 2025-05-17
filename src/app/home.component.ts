@@ -235,14 +235,24 @@ export class HomeComponent implements OnInit, OnDestroy {
     
     // Set up search observables with switchMap
     this.searchResults$ = this.userSearchTerms$.pipe(
-      debounceTime(400),
+      debounceTime(300),
       distinctUntilChanged(),
+      tap(term => {
+        if (term) {
+          console.log(`Searching for users: "${term}"`);
+        }
+      }),
       switchMap(term => this.rxjsService.searchUsers(term))
     );
     
     this.posts$ = this.postSearchTerms$.pipe(
-      debounceTime(400),
+      debounceTime(300),
       distinctUntilChanged(),
+      tap(term => {
+        if (term) {
+          console.log(`Searching for posts: "${term}"`);
+        }
+      }),
       switchMap(term => this.rxjsService.searchPosts(term))
     );
   }
